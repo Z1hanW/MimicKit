@@ -150,8 +150,9 @@ class AMPAgent(ppo_agent.PPOAgent):
 
         for i in range(steps):
             batch = self._exp_buffer.sample(batch_size)
-            loss_info = self._compute_disc_loss(batch)
-            loss = loss_info["disc_loss"]
+            with torch.amp.autocast(device_type="cuda", enabled=self._use_mixed_precision, dtype=torch.bfloat16):
+                loss_info = self._compute_disc_loss(batch)
+                loss = loss_info["disc_loss"]
             self._disc_optimizer.step(loss)
 
             torch_util.add_torch_dict(loss_info, info)

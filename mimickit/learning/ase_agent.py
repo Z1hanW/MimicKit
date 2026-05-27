@@ -255,8 +255,9 @@ class ASEAgent(amp_agent.AMPAgent):
 
         for i in range(steps):
             batch = self._exp_buffer.sample(batch_size)
-            loss_info = self._compute_enc_loss(batch)
-            loss = loss_info["enc_loss"]
+            with torch.amp.autocast(device_type="cuda", enabled=self._use_mixed_precision, dtype=torch.bfloat16):
+                loss_info = self._compute_enc_loss(batch)
+                loss = loss_info["enc_loss"]
             self._enc_optimizer.step(loss)
 
             torch_util.add_torch_dict(loss_info, info)

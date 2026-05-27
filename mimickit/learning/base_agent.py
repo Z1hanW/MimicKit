@@ -151,6 +151,8 @@ class BaseAgent(torch.nn.Module):
         self._test_episodes = config["test_episodes"]
         
         self._steps_per_iter = config["steps_per_iter"]
+        
+        self._use_mixed_precision = config["use_mixed_precision"]
         return
 
     def _build_normalizers(self):
