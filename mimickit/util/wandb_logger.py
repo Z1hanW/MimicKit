@@ -27,9 +27,16 @@ class WandbLogger(logger.Logger):
         super().configure_output_file(filename)
 
         if (logger.Logger.is_root()):
-            basename = os.path.basename(filename)
-            exp_name = os.path.splitext(basename)[0]
-            wandb.init(project=self._project_name, name=exp_name, config=self._param_config)
+            project_name = os.environ.get("WANDB_PROJECT", self._project_name)
+            entity_name = os.environ.get("WANDB_ENTITY", None)
+            exp_name = os.environ.get("WANDB_NAME", None)
+
+            if (exp_name is None and filename is not None):
+                out_dir = os.path.basename(os.path.dirname(filename))
+                basename = os.path.basename(filename)
+                exp_name = out_dir if out_dir != "" else os.path.splitext(basename)[0]
+
+            wandb.init(project=project_name, entity=entity_name, name=exp_name, config=self._param_config)
         
         return
 

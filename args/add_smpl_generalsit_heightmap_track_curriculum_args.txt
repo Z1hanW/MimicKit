@@ -1,0 +1,7 @@
+--num_envs 4096
+
+--engine_config data/engines/isaac_gym_engine.yaml
+--env_config data/envs/add_smpl_generalsit_heightmap_track_curriculum_env.yaml
+--agent_config data/agents/add_smpl_generalsit_heightmap_track_curriculum_agent.yaml
+
+--out_dir output/add_smpl_bedlam2_clean_7177_heightmap_track_curriculum/

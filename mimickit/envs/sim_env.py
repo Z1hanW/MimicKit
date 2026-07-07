@@ -2,13 +2,42 @@ import engines.engine_builder as engine_builder
 
 import abc
 import enum
+import fcntl
 import gymnasium.spaces as spaces
 import numpy as np
+import os
 import torch
 
 import envs.base_env as base_env
 import util.torch_util as torch_util
 import util.camera as camera
+import util.mp_util as mp_util
+
+
+class _NullContext:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+
+class _FileLock:
+    def __init__(self, path):
+        self._path = path
+        self._file = None
+
+    def __enter__(self):
+        os.makedirs(os.path.dirname(self._path), exist_ok=True)
+        self._file = open(self._path, "w")
+        fcntl.flock(self._file.fileno(), fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        fcntl.flock(self._file.fileno(), fcntl.LOCK_UN)
+        self._file.close()
+        self._file = None
+        return False
 
 class PlayMode(enum.Enum):
     PLAY = 0
@@ -26,11 +55,12 @@ class SimEnv(base_env.BaseEnv):
         
         self._engine = self._build_engine(engine_config, num_envs, device, visualize, record_video)
         self._build_envs(env_config, num_envs)
-        self._engine.initialize_sim()
-        
-        self._action_space = self._build_action_space()
-        self._build_sim_tensors(env_config)
-        self._build_data_buffers()
+
+        with self._sim_init_context(engine_config):
+            self._engine.initialize_sim()
+            self._action_space = self._build_action_space()
+            self._build_sim_tensors(env_config)
+            self._build_data_buffers()
 
         if self._visualize:
             self._build_camera(env_config)
@@ -38,6 +68,13 @@ class SimEnv(base_env.BaseEnv):
             self._setup_gui()
 
         return
+
+    def _sim_init_context(self, engine_config):
+        use_lock = mp_util.enable_mp() and engine_config.get("engine_name", "") == "isaac_gym"
+        if (use_lock):
+            return _FileLock("/tmp/mimickit_isaac_gym_init.lock")
+        else:
+            return _NullContext()
     
     def get_obs_space(self):
         obs = self._compute_obs()

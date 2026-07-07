@@ -1,0 +1,58 @@
+env_name: "heightmap_add"
+
+char_file: "data/assets/smpl/smpl.xml"
+camera_mode: "track"
+
+episode_length: 10.0 # seconds
+global_obs: True
+root_height_obs: True
+pose_termination: True
+pose_termination_dist: 0.5 # m
+enable_phase_obs: False
+enable_tar_obs: True
+num_phase_encoding: 4
+tar_obs_steps: [1, 2, 3]
+num_disc_obs_steps: 1
+rand_reset: True
+log_tracking_error: True
+
+heightmap_obs: True
+heightmap_num_rows: 15
+heightmap_num_cols: 15
+heightmap_x_range: [-1.5, 1.5]
+heightmap_y_range: [-1.0, 1.0]
+heightmap_ground_height: 0.0
+heightmap_relative_to_root: True
+heightmap_clip: [-3.0, 3.0]
+# Optional real terrain observation source:
+# heightmap_file: "data/heightmaps/example.npy"
+# heightmap_origin: [-5.0, -5.0]
+# heightmap_resolution: 0.05
+
+ref_char_offset: [2.0, 0.0, 0.0] # m
+init_pose: [0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1.5708, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.5708, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+enable_early_termination: True
+key_bodies: ["L_Toe", "R_Toe", "Head", "L_Hand", "R_Hand"]
+contact_bodies: [
+  "Pelvis",
+  "L_Hip", "L_Knee", "L_Ankle", "L_Toe",
+  "R_Hip", "R_Knee", "R_Ankle", "R_Toe",
+  "Torso", "Spine", "Chest", "Neck", "Head",
+  "L_Thorax", "L_Shoulder", "L_Elbow", "L_Wrist", "L_Hand",
+  "R_Thorax", "R_Shoulder", "R_Elbow", "R_Wrist", "R_Hand"
+]
+
+motion_file: "data/datasets/dataset_smpl_bedlam2_clean_7177.yaml"
+
+reward_pose_w: 0.5
+reward_vel_w: 0.1
+reward_root_pose_w: 0.15
+reward_root_vel_w: 0.1
+reward_key_pos_w: 0.15
+
+reward_pose_scale: 0.25
+reward_vel_scale: 0.01
+reward_root_pose_scale: 5.0
+reward_root_vel_scale: 1.0
+reward_key_pos_scale: 10.0

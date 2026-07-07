@@ -136,6 +136,18 @@ def main(argv):
     args = load_args(argv)
     master_port = args.parse_int("master_port", None)
     devices = args.parse_strings("devices", ["cuda:0"])
+    proc_rank = args.parse_int("proc_rank", -1)
+    num_procs = args.parse_int("num_procs", -1)
+
+    if (proc_rank >= 0 or num_procs >= 0):
+        assert(proc_rank >= 0), "proc_rank must be specified for external multi-process launch."
+        assert(num_procs > 0), "num_procs must be specified for external multi-process launch."
+        assert(len(devices) == 1), "External multi-process launch expects one visible device per process."
+        if (master_port is None):
+            master_port = 29500
+
+        run(proc_rank, num_procs, devices[0], master_port, args)
+        return
     
     num_workers = len(devices)
     assert(num_workers > 0)

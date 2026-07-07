@@ -17,7 +17,7 @@ SMPL Format:
     The input SMPL format should be a npz file containing arrays with keys:
     - 'poses': Pose parameters array, shape (num_frames, num_pose_params)
     - 'trans': Translation array, shape (num_frames, 3)
-    - 'mocap_framerate' or 'fps': Frame rate (int)
+    - 'mocap_framerate', 'mocap_frame_rate', or 'fps': Frame rate (int)
     This format follows from the AMASS dataset.
 
 Output:
@@ -30,6 +30,7 @@ import numpy as np
 import sys
 import torch
 import os
+from typing import Optional, Tuple
 
 sys.path.append(".")
 
@@ -48,7 +49,17 @@ ZUP_TO_YUP = torch.tensor([0.5, 0.5, 0.5, 0.5])
 YUP_TO_ZUP = quat_conjugate(ZUP_TO_YUP)
 
 
-def load_smpl_motion(input_file: str) -> tuple[np.ndarray, np.ndarray, int]:
+def _npz_scalar_to_str(value):
+    if value is None:
+        return None
+    if hasattr(value, "item"):
+        value = value.item()
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    return str(value)
+
+
+def load_smpl_motion(input_file: str) -> Tuple[np.ndarray, np.ndarray, int, Optional[str]]:
     """
     Load SMPL/AMASS motion data from .npz file.
     
@@ -61,14 +72,23 @@ def load_smpl_motion(input_file: str) -> tuple[np.ndarray, np.ndarray, int]:
         data = np.load(input_file, allow_pickle=True)
         poses = data['poses']  # (N, num_pose_params)
         trans = data['trans']  # (N, 3)
-        fps = data.get('mocap_framerate', data.get('fps', 30))  # Default to 30 if not available
+        fps = data.get('mocap_framerate', data.get('mocap_frame_rate', data.get('fps', 30)))  # Default to 30 if not available
         if hasattr(fps, 'item'):
             fps = fps.item()
         fps = int(fps)
+        coordinate_system = _npz_scalar_to_str(data.get('coordinate_system', None))
     else:
         raise ValueError("Unsupported file format. Please provide a .npz file.")
     
-    return poses, trans, fps
+    return poses, trans, fps, coordinate_system
+
+
+def resolve_input_coordinate_system(requested_coordinate_system: str, file_coordinate_system: Optional[str]) -> str:
+    if requested_coordinate_system == "auto":
+        if file_coordinate_system is None:
+            return "y-up"
+        return file_coordinate_system.lower()
+    return requested_coordinate_system
 
 
 def convert_smpl_to_mimickit(input_file: str, 
@@ -77,7 +97,8 @@ def convert_smpl_to_mimickit(input_file: str,
                              start_frame: int = 0, 
                              end_frame: int = -1, 
                              output_fps: int = -1,
-                             z_correction: str = "none") -> Motion:
+                             z_correction: str = "none",
+                             input_coordinate_system: str = "auto") -> Motion:
     """
     Convert SMPL/AMASS motion data to MimicKit format.
     
@@ -89,6 +110,9 @@ def convert_smpl_to_mimickit(input_file: str,
         end_frame: End frame for clipping (-1 for all)
         output_fps: Output frame rate (-1 to use source fps)
         z_correction: Z-axis correction method ("none", "calibrate", "full")
+        input_coordinate_system: "auto", "y-up", or "z-up". The original script
+            behavior is preserved for y-up inputs. z-up inputs are not rotated
+            again.
 
     Returns:
         MimicKit Motion object
@@ -108,7 +132,10 @@ def convert_smpl_to_mimickit(input_file: str,
         raise ValueError(f"Invalid loop_mode: {loop_mode}. Choose 'wrap' or 'clamp'.")
     
     # Load SMPL data
-    poses, trans, fps = load_smpl_motion(input_file)
+    poses, trans, fps, file_coordinate_system = load_smpl_motion(input_file)
+    resolved_coordinate_system = resolve_input_coordinate_system(input_coordinate_system, file_coordinate_system)
+    if resolved_coordinate_system not in ["y-up", "z-up"]:
+        raise ValueError(f"Unsupported input coordinate system: {resolved_coordinate_system}")
     N = poses.shape[0]
     
     print("\n" + "="*60)
@@ -117,6 +144,7 @@ def convert_smpl_to_mimickit(input_file: str,
     print(f"📁 File: {input_file}")
     print(f"🎬 Frames: {N}")
     print(f"⏱️  FPS: {fps}")
+    print(f"Coordinate system: {resolved_coordinate_system}")
     print(f"🦴 Pose params: {poses.shape[1]}")
     print(f"📍 Trans shape: {trans.shape}")
     print("="*60 + "\n")
@@ -133,9 +161,14 @@ def convert_smpl_to_mimickit(input_file: str,
         torch.tensor(pose_quat, dtype=torch.float32),
         PARENT_INDICES
     )
+    if resolved_coordinate_system == "y-up":
+        input_to_output_rot = YUP_TO_ZUP
+    else:
+        input_to_output_rot = torch.tensor([0.0, 0.0, 0.0, 1.0], dtype=torch.float32)
+
     rotated_global_rot = quat_mul(
         global_rot.reshape(-1, 4),
-        YUP_TO_ZUP.expand(global_rot.reshape(-1, 4).shape[0], -1)
+        input_to_output_rot.expand(global_rot.reshape(-1, 4).shape[0], -1)
     ).reshape(N, -1, 4)
     rotated_local_rot = compute_local_rotations(
         rotated_global_rot,
@@ -154,7 +187,7 @@ def convert_smpl_to_mimickit(input_file: str,
 
     rotated_root_rot_quat = quat_mul(
         torch.tensor(root_rot, dtype=torch.float32),
-        YUP_TO_ZUP.expand(root_rot.shape[0], -1)
+        input_to_output_rot.expand(root_rot.shape[0], -1)
     )
     root_rot = quat_to_exp_map(rotated_root_rot_quat).numpy()
 
@@ -212,6 +245,7 @@ def main():
     parser.add_argument("--end_frame", type=int, default=-1, help="End frame for clipping (default: -1, uses all frames)")
     parser.add_argument("--output_fps", type=int, default=-1, help="Output frame rate (default: -1, uses source fps)")
     parser.add_argument("--z_correction", type=str, default="calibrate", choices=["none", "calibrate", "full"], help="Z-axis correction method (default: none)")
+    parser.add_argument("--input_coordinate_system", type=str, default="auto", choices=["auto", "y-up", "z-up"], help="Input coordinate system (default: auto)")
     
     args = parser.parse_args()
     
@@ -222,7 +256,8 @@ def main():
         start_frame=args.start_frame,
         end_frame=args.end_frame,
         output_fps=args.output_fps,
-        z_correction=args.z_correction
+        z_correction=args.z_correction,
+        input_coordinate_system=args.input_coordinate_system
     )
 
 
